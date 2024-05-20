@@ -5,6 +5,7 @@ using System;
 using osu.Game.Rulesets.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Osu.Difficulty.Preprocessing;
 using osu.Game.Rulesets.Osu.Objects;
+using osuTK;
 
 namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
 {
@@ -12,9 +13,11 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
     {
         private const double max_opacity_bonus = 0.4;
         private const double hidden_bonus = 0.2;
+        private const double flashlight_padding = 80;
 
         private const double min_velocity = 0.5;
-        private const double slider_multiplier = 1.3;
+        private const double max_velocity = 1.5;
+        private const double slider_multiplier = 0.3;
 
         private const double min_angle_multiplier = 0.2;
 
@@ -52,15 +55,25 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
                 var currentObj = (OsuDifficultyHitObject)current.Previous(i);
                 var currentHitObject = (OsuHitObject)(currentObj.BaseObject);
 
+                cumulativeStrainTime += lastObj.StrainTime;
+
                 if (!(currentObj.BaseObject is Spinner))
                 {
-                    double jumpDistance = (osuHitObject.StackedPosition - currentHitObject.StackedEndPosition).Length;
+                    double pixelJumpDistance = (osuHitObject.StackedPosition - currentHitObject.StackedEndPosition).Length;
 
-                    cumulativeStrainTime += lastObj.StrainTime;
+                    // Consider the jump from the lazy end position for sliders.
+                    if (currentHitObject is Slider currentSlider)
+                    {
+                        Vector2 lazyEndPosition = currentSlider.LazyEndPosition ?? currentSlider.StackedPosition;
+                        pixelJumpDistance = Math.Min(pixelJumpDistance, (osuHitObject.StackedPosition - lazyEndPosition).Length);
+                    }
 
                     // We want to nerf objects that can be easily seen within the Flashlight circle radius.
                     if (i == 0)
-                        smallDistNerf = Math.Min(1.0, jumpDistance / 75.0);
+                    {
+                        float flashlightRadius = 200 * getComboScaleFor(osuCurrent.PreviousMaxCombo);
+                        smallDistNerf = Math.Min(1.0, pixelJumpDistance / (flashlightRadius + osuHitObject.Radius - flashlight_padding));
+                    }
 
                     // We also want to nerf stacks so that only the first object of the stack is accounted for.
                     double stackNerf = Math.Min(1.0, (currentObj.LazyJumpDistance / scalingFactor) / 25.0);
@@ -68,7 +81,7 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
                     // Bonus based on how visible the object is.
                     double opacityBonus = 1.0 + max_opacity_bonus * (1.0 - osuCurrent.OpacityAt(currentHitObject.StartTime, hidden));
 
-                    result += stackNerf * opacityBonus * scalingFactor * jumpDistance / cumulativeStrainTime;
+                    result += stackNerf * opacityBonus * scalingFactor * pixelJumpDistance / cumulativeStrainTime;
 
                     if (currentObj.Angle != null && osuCurrent.Angle != null)
                     {
@@ -97,20 +110,34 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
                 // Invert the scaling factor to determine the true travel distance independent of circle size.
                 double pixelTravelDistance = osuSlider.LazyTravelDistance / scalingFactor;
 
-                // Reward sliders based on velocity.
-                sliderBonus = Math.Pow(Math.Max(0.0, pixelTravelDistance / osuCurrent.TravelTime - min_velocity), 0.5);
+                // Reward sliders based on cursor velocity.
+                sliderBonus = Math.Log(pixelTravelDistance / osuCurrent.TravelTime + 1);
 
-                // Longer sliders require more memorisation.
-                sliderBonus *= pixelTravelDistance;
+                // More cursor movement requires more memorisation.
+                sliderBonus *= osuSlider.LazyTravelDistance;
 
-                // Nerf sliders with repeats, as less memorisation is required.
-                if (osuSlider.RepeatCount > 0)
-                    sliderBonus /= (osuSlider.RepeatCount + 1);
+                // Nerf slow slider velocity.
+                double sliderVelocity = osuSlider.Distance / osuCurrent.TravelTime;
+                sliderBonus *= Math.Clamp((sliderVelocity - min_velocity) / (max_velocity - min_velocity), 0, 1);
+
+                // Nerf sliders the more repeats they have, as less memorisation is required.
+                sliderBonus /= 0.75 * osuSlider.RepeatCount + 1;
             }
 
-            result += sliderBonus * slider_multiplier;
+            result += Math.Pow(sliderBonus, 1.2) * slider_multiplier;
 
             return result;
+        }
+
+        private static float getComboScaleFor(int combo)
+        {
+            // Taken from ModFlashlight.
+            if (combo >= 200)
+                return 0.625f;
+            if (combo >= 100)
+                return 0.8125f;
+
+            return 1.0f;
         }
     }
 }
