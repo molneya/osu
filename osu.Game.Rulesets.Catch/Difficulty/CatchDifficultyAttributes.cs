@@ -11,6 +11,18 @@ namespace osu.Game.Rulesets.Catch.Difficulty
     public class CatchDifficultyAttributes : DifficultyAttributes
     {
         /// <summary>
+        /// The difficulty corresponding to the movement skill.
+        /// </summary>
+        [JsonProperty("movement_difficulty")]
+        public double MovementDifficulty { get; set; }
+
+        /// <summary>
+        /// The difficulty corresponding to the flashlight skill.
+        /// </summary>
+        [JsonProperty("flashlight_difficulty")]
+        public double FlashlightDifficulty { get; set; }
+
+        /// <summary>
         /// The perceived approach rate inclusive of rate-adjusting mods (DT/HT/etc).
         /// </summary>
         /// <remarks>
@@ -24,8 +36,9 @@ namespace osu.Game.Rulesets.Catch.Difficulty
             foreach (var v in base.ToDatabaseAttributes())
                 yield return v;
 
-            // Todo: osu!catch should not output star rating in the 'aim' attribute.
-            yield return (ATTRIB_ID_AIM, StarRating);
+            yield return (ATTRIB_ID_DIFFICULTY, StarRating);
+            yield return (ATTRIB_ID_AIM, MovementDifficulty);
+            yield return (ATTRIB_ID_FLASHLIGHT, FlashlightDifficulty);
             yield return (ATTRIB_ID_APPROACH_RATE, ApproachRate);
         }
 
@@ -33,7 +46,9 @@ namespace osu.Game.Rulesets.Catch.Difficulty
         {
             base.FromDatabaseAttributes(values, onlineInfo);
 
-            StarRating = values[ATTRIB_ID_AIM];
+            StarRating = values[ATTRIB_ID_DIFFICULTY];
+            MovementDifficulty = values[ATTRIB_ID_AIM];
+            FlashlightDifficulty = values[ATTRIB_ID_FLASHLIGHT];
             ApproachRate = values[ATTRIB_ID_APPROACH_RATE];
         }
     }

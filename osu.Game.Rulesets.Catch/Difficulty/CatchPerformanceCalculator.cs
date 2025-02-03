@@ -5,6 +5,8 @@ using System;
 using System.Linq;
 using osu.Game.Rulesets.Difficulty;
 using osu.Game.Rulesets.Mods;
+using osu.Game.Rulesets.Catch.Difficulty.Skills;
+using osu.Game.Rulesets.Catch.Mods;
 using osu.Game.Scoring;
 using osu.Game.Scoring.Legacy;
 
@@ -33,8 +35,31 @@ namespace osu.Game.Rulesets.Catch.Difficulty
             numKatu = score.GetCountKatu() ?? 0; // HitResult.SmallTickMiss
             numMiss = score.GetCountMiss() ?? 0; // HitResult.Miss PLUS HitResult.LargeTickMiss
 
-            // We are heavily relying on aim in catch the beat
-            double value = Math.Pow(5.0 * Math.Max(1.0, catchAttributes.StarRating / 0.0049) - 4.0, 2.0) / 100000.0;
+            double multiplier = 1.0;
+
+            if (score.Mods.Any(m => m is ModNoFail))
+                multiplier = Math.Max(0.90, 1.0 - 0.02 * numMiss);
+
+            double movementValue = computeMovementValue(score, catchAttributes);
+            double flashlightValue = computeFlashlightValue(score, catchAttributes);
+
+            double totalValue =
+                Math.Pow(
+                    Math.Pow(movementValue, 1.1) +
+                    Math.Pow(flashlightValue, 1.1), 1.0 / 1.1
+                ) * multiplier;
+
+            return new CatchPerformanceAttributes
+            {
+                Movement = movementValue,
+                Flashlight = flashlightValue,
+                Total = totalValue,
+            };
+        }
+
+        private double computeMovementValue(ScoreInfo score, CatchDifficultyAttributes attributes)
+        {
+            double movementValue = Movement.DifficultyToPerformance(attributes.MovementDifficulty);
 
             // Longer maps are worth more. "Longer" means how many hits there are which can contribute to combo
             int numTotalHits = totalComboHits();
@@ -42,16 +67,17 @@ namespace osu.Game.Rulesets.Catch.Difficulty
             double lengthBonus =
                 0.95 + 0.3 * Math.Min(1.0, numTotalHits / 2500.0) +
                 (numTotalHits > 2500 ? Math.Log10(numTotalHits / 2500.0) * 0.475 : 0.0);
-            value *= lengthBonus;
+            movementValue *= lengthBonus;
 
-            value *= Math.Pow(0.97, numMiss);
+            movementValue *= Math.Pow(0.97, numMiss);
 
             // Combo scaling
-            if (catchAttributes.MaxCombo > 0)
-                value *= Math.Min(Math.Pow(score.MaxCombo, 0.8) / Math.Pow(catchAttributes.MaxCombo, 0.8), 1.0);
+            if (attributes.MaxCombo > 0)
+                movementValue *= Math.Min(Math.Pow(score.MaxCombo, 0.8) / Math.Pow(attributes.MaxCombo, 0.8), 1.0);
 
-            double approachRate = catchAttributes.ApproachRate;
+            double approachRate = attributes.ApproachRate;
             double approachRateFactor = 1.0;
+
             if (approachRate > 9.0)
                 approachRateFactor += 0.1 * (approachRate - 9.0); // 10% for each AR above 9
             if (approachRate > 10.0)
@@ -59,29 +85,33 @@ namespace osu.Game.Rulesets.Catch.Difficulty
             else if (approachRate < 8.0)
                 approachRateFactor += 0.025 * (8.0 - approachRate); // 2.5% for each AR below 8
 
-            value *= approachRateFactor;
+            movementValue *= approachRateFactor;
 
             if (score.Mods.Any(m => m is ModHidden))
             {
                 // Hiddens gives almost nothing on max approach rate, and more the lower it is
                 if (approachRate <= 10.0)
-                    value *= 1.05 + 0.075 * (10.0 - approachRate); // 7.5% for each AR below 10
+                    movementValue *= 1.05 + 0.075 * (10.0 - approachRate); // 7.5% for each AR below 10
                 else if (approachRate > 10.0)
-                    value *= 1.01 + 0.04 * (11.0 - Math.Min(11.0, approachRate)); // 5% at AR 10, 1% at AR 11
+                    movementValue *= 1.01 + 0.04 * (11.0 - Math.Min(11.0, approachRate)); // 5% at AR 10, 1% at AR 11
             }
 
-            if (score.Mods.Any(m => m is ModFlashlight))
-                value *= 1.35 * lengthBonus;
+            movementValue *= Math.Pow(accuracy(), 5.5);
 
-            value *= Math.Pow(accuracy(), 5.5);
+            return movementValue;
+        }
 
-            if (score.Mods.Any(m => m is ModNoFail))
-                value *= Math.Max(0.90, 1.0 - 0.02 * numMiss);
+        private double computeFlashlightValue(ScoreInfo score, CatchDifficultyAttributes attributes)
+        {
+            if (!score.Mods.Any(h => h is CatchModFlashlight))
+                return 0.0;
 
-            return new CatchPerformanceAttributes
-            {
-                Total = value
-            };
+            double flashlightValue = Flashlight.DifficultyToPerformance(attributes.FlashlightDifficulty);
+
+            flashlightValue *= Math.Pow(0.97, numMiss);
+            flashlightValue *= Math.Pow(accuracy(), 5.5);
+
+            return flashlightValue;
         }
 
         private double accuracy() => totalHits() == 0 ? 0 : Math.Clamp((double)totalSuccessfulHits() / totalHits(), 0, 1);

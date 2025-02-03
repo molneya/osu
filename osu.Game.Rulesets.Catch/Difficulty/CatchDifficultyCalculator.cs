@@ -39,9 +39,16 @@ namespace osu.Game.Rulesets.Catch.Difficulty
             // this is the same as osu!, so there's potential to share the implementation... maybe
             double preempt = IBeatmapDifficultyInfo.DifficultyRange(beatmap.Difficulty.ApproachRate, 1800, 1200, 450) / clockRate;
 
+            var flashlight = skills.OfType<Flashlight>().SingleOrDefault();
+
+            double movementRating = Math.Sqrt(skills.OfType<Movement>().Single().DifficultyValue()) * difficulty_multiplier;
+            double flashlightRating = flashlight == null ? 0.0 : Math.Sqrt(flashlight.DifficultyValue()) * difficulty_multiplier;
+
             CatchDifficultyAttributes attributes = new CatchDifficultyAttributes
             {
-                StarRating = Math.Sqrt(skills.OfType<Movement>().Single().DifficultyValue()) * difficulty_multiplier,
+                StarRating = movementRating + flashlightRating, // This should be replaced with a performance to stars derivation like osu!
+                MovementDifficulty = movementRating,
+                FlashlightDifficulty = flashlightRating,
                 Mods = mods,
                 ApproachRate = preempt > 1200.0 ? -(preempt - 1800.0) / 120.0 : -(preempt - 1200.0) / 150.0 + 5.0,
                 MaxCombo = beatmap.GetMaxCombo(),
@@ -79,10 +86,15 @@ namespace osu.Game.Rulesets.Catch.Difficulty
             // For circle sizes above 5.5, reduce the catcher width further to simulate imperfect gameplay.
             halfCatcherWidth *= 1 - (Math.Max(0, beatmap.Difficulty.CircleSize - 5.5f) * 0.0625f);
 
-            return new Skill[]
+            var skills = new List<Skill>
             {
                 new Movement(mods, halfCatcherWidth, clockRate),
             };
+
+            if (mods.Any(h => h is CatchModFlashlight))
+                skills.Add(new Flashlight(mods));
+
+            return skills.ToArray();
         }
 
         protected override Mod[] DifficultyAdjustmentMods => new Mod[]
@@ -91,6 +103,7 @@ namespace osu.Game.Rulesets.Catch.Difficulty
             new CatchModHalfTime(),
             new CatchModHardRock(),
             new CatchModEasy(),
+            new CatchModFlashlight(),
         };
     }
 }

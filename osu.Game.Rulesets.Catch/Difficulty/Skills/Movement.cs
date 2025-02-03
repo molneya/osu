@@ -124,5 +124,7 @@ namespace osu.Game.Rulesets.Catch.Difficulty.Skills
 
             return distanceAddition / weightedStrainTime;
         }
+
+        public static double DifficultyToPerformance(double difficulty) => Math.Pow(5.0 * Math.Max(1.0, difficulty / 0.0049) - 4.0, 2.0) / 100000.0;
     }
 }
