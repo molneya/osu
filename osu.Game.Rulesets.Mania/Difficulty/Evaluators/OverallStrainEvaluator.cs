@@ -40,7 +40,6 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Evaluators
                     Precision.DefinitelyBigger(startTime, maniaPrevious.StartTime, 1))
                 {
                     isOverlapping = true;
-                    closestOverlapEndTime = Math.Min(closestOverlapEndTime, Math.Abs(endTime - maniaPrevious.EndTime));
                 }
 
                 // A note is held if a previous note ends after the current note
@@ -51,6 +50,8 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Evaluators
                     furthestHoldStartTime = Math.Max(furthestHoldStartTime, startTime - maniaPrevious.StartTime);
                     closestHoldEndTime = Math.Min(closestHoldEndTime, Math.Abs(startTime - maniaPrevious.EndTime));
                 }
+
+                closestOverlapEndTime = Math.Min(closestOverlapEndTime, Math.Abs(endTime - maniaPrevious.EndTime));
             }
 
             // Scale overlap bonus so extremely brief overlaps do not reward as much 
