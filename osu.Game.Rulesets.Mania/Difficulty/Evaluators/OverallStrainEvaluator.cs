@@ -18,44 +18,54 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Evaluators
             var maniaCurrent = (ManiaDifficultyHitObject)current;
             double startTime = maniaCurrent.StartTime;
             double endTime = maniaCurrent.EndTime;
-            bool isOverlapping = false;
 
-            double closestEndTime = Math.Abs(endTime - startTime); // Lowest value we can assume with the current information
-            double holdFactor = 1.0; // Factor to all additional strains in case something else is held
-            double holdAddition = 0; // Addition to the current note in case it's a hold and has to be released awkwardly
+            bool isOverlapping = false;
+            bool isHeld = false;
+
+            double closestOverlapEndTime = Math.Abs(endTime - startTime); // Lowest value we can assume with the current information
+            double furthestHoldStartTime = 0;
+            double closestHoldEndTime = 10000;
+
+            double overlapBonus = 0;
+            double holdBonus = 0;
 
             foreach (var maniaPrevious in maniaCurrent.PreviousHitObjects)
             {
                 if (maniaPrevious is null)
                     continue;
 
-                // The current note is overlapped if a previous note or end is overlapping the current note body
-                isOverlapping |= Precision.DefinitelyBigger(maniaPrevious.EndTime, startTime, 1) &&
-                                 Precision.DefinitelyBigger(endTime, maniaPrevious.EndTime, 1) &&
-                                 Precision.DefinitelyBigger(startTime, maniaPrevious.StartTime, 1);
+                // A note is overlapped if a previous note ends during the current note body
+                if (Precision.DefinitelyBigger(maniaPrevious.EndTime, startTime, 1) &&
+                    Precision.DefinitelyBigger(endTime, maniaPrevious.EndTime, 1) &&
+                    Precision.DefinitelyBigger(startTime, maniaPrevious.StartTime, 1))
+                {
+                    isOverlapping = true;
+                    closestOverlapEndTime = Math.Min(closestOverlapEndTime, Math.Abs(endTime - maniaPrevious.EndTime));
+                }
 
-                // We give a slight bonus to everything if something is held meanwhile
+                // A note is held if a previous note ends after the current note
                 if (Precision.DefinitelyBigger(maniaPrevious.EndTime, endTime, 1) &&
                     Precision.DefinitelyBigger(startTime, maniaPrevious.StartTime, 1))
-                    holdFactor = 1.25;
-
-                closestEndTime = Math.Min(closestEndTime, Math.Abs(endTime - maniaPrevious.EndTime));
+                {
+                    isHeld = true;
+                    furthestHoldStartTime = Math.Max(furthestHoldStartTime, startTime - maniaPrevious.StartTime);
+                    closestHoldEndTime = Math.Min(closestHoldEndTime, Math.Abs(startTime - maniaPrevious.EndTime));
+                }
             }
 
-            // The hold addition is given if there was an overlap, however it is only valid if there are no other note with a similar ending.
-            // Releasing multiple notes is just as easy as releasing 1. Nerfs the hold addition by half if the closest release is release_threshold away.
-            // holdAddition
-            //     ^
-            // 1.0 + - - - - - -+-----------
-            //     |           /
-            // 0.5 + - - - - -/   Sigmoid Curve
-            //     |         /|
-            // 0.0 +--------+-+---------------> Release Difference / ms
-            //         release_threshold
+            // Scale overlap bonus so extremely brief overlaps do not reward as much 
             if (isOverlapping)
-                holdAddition = DifficultyCalculationUtils.Logistic(x: closestEndTime, multiplier: 0.27, midpointOffset: release_threshold);
+                overlapBonus = DifficultyCalculationUtils.Logistic(x: closestOverlapEndTime, multiplier: 0.27, midpointOffset: release_threshold);
 
-            return (1 + holdAddition) * holdFactor;
+            // Scale hold bonus so holds very close to the start or end of the held note do not reward as much
+            if (isHeld)
+            {
+                double holdStartScale = DifficultyCalculationUtils.Logistic(x: furthestHoldStartTime, multiplier: 0.27, midpointOffset: release_threshold);
+                double holdEndScale = DifficultyCalculationUtils.Logistic(x: closestHoldEndTime, multiplier: 0.27, midpointOffset: release_threshold);
+                holdBonus = holdStartScale * holdEndScale;
+            }
+
+            return (1 + overlapBonus) * (1 + 0.25 * holdBonus);
         }
     }
 }
