@@ -25,7 +25,7 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Evaluators
             double closestOverlapStartTime = Math.Abs(endTime - startTime);
             double closestOverlapEndTime = Math.Abs(endTime - startTime);
             double furthestHoldStartTime = 0;
-            double furthestHoldEndTime = 0;
+            double closestHoldEndTime = 10000;
 
             double overlapBonus = 0;
             double holdBonus = 0;
@@ -51,7 +51,7 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Evaluators
                 {
                     isHeld = true;
                     furthestHoldStartTime = Math.Max(furthestHoldStartTime, startTime - maniaPrevious.StartTime);
-                    furthestHoldEndTime = Math.Max(furthestHoldEndTime, maniaPrevious.EndTime - startTime);
+                    closestHoldEndTime = Math.Min(closestHoldEndTime, Math.Abs(startTime - maniaPrevious.EndTime));
                 }
             }
 
@@ -67,7 +67,7 @@ namespace osu.Game.Rulesets.Mania.Difficulty.Evaluators
             if (isHeld)
             {
                 double holdStartScale = DifficultyCalculationUtils.Logistic(x: furthestHoldStartTime, multiplier: 0.27, midpointOffset: release_threshold);
-                double holdEndScale = DifficultyCalculationUtils.Logistic(x: furthestHoldEndTime, multiplier: 0.27, midpointOffset: release_threshold);
+                double holdEndScale = DifficultyCalculationUtils.Logistic(x: closestHoldEndTime, multiplier: 0.27, midpointOffset: release_threshold);
                 holdBonus = holdStartScale * holdEndScale;
             }
 
