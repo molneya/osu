@@ -40,15 +40,17 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
             var osuCurrent = (OsuDifficultyHitObject)current;
             var osuHitObject = (OsuHitObject)(osuCurrent.BaseObject);
 
-            double scalingFactor = 52.0 / osuHitObject.Radius;
+            double scalingFactor = 50.0 / osuHitObject.Radius;
             double smallDistNerf = 1.0;
+
             double cumulativeStrainTime = 0.0;
+            double cumulativeLazyJumpDistance = 0.0;
+            double cumulativeDistance = 0.0;
+            double angleRepeatCount = 0.0;
 
             double result = 0.0;
 
             OsuDifficultyHitObject lastObj = osuCurrent;
-
-            double angleRepeatCount = 0.0;
 
             // This is iterating backwards in time from the current object.
             for (int i = 0; i < Math.Min(current.Index, 10); i++)
@@ -60,19 +62,17 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
 
                 if (!(currentObj.BaseObject is Spinner))
                 {
-                    double jumpDistance = (osuHitObject.StackedPosition - currentHitObject.StackedEndPosition).Length;
+                    cumulativeLazyJumpDistance += currentObj.LazyJumpDistance;
+                    cumulativeDistance += (osuHitObject.StackedPosition - currentHitObject.StackedEndPosition).Length;
 
                     // We want to nerf objects that can be easily seen within the Flashlight circle radius.
                     if (i == 0)
-                        smallDistNerf = Math.Min(1.0, jumpDistance / 75.0);
-
-                    // We also want to nerf stacks so that only the first object of the stack is accounted for.
-                    double stackNerf = Math.Min(1.0, (currentObj.LazyJumpDistance / scalingFactor) / 25.0);
+                        smallDistNerf = Math.Min(1.0, cumulativeDistance / 75.0);
 
                     // Bonus based on how visible the object is.
                     double opacityBonus = 1.0 + max_opacity_bonus * (1.0 - osuCurrent.OpacityAt(currentHitObject.StartTime, mods.OfType<OsuModHidden>().Any(m => !m.OnlyFadeApproachCircles.Value)));
 
-                    result += stackNerf * opacityBonus * scalingFactor * jumpDistance / cumulativeStrainTime;
+                    result += opacityBonus * cumulativeLazyJumpDistance / cumulativeStrainTime;
 
                     if (currentObj.Angle != null && osuCurrent.Angle != null)
                     {
@@ -85,7 +85,13 @@ namespace osu.Game.Rulesets.Osu.Difficulty.Evaluators
                 lastObj = currentObj;
             }
 
-            result = Math.Pow(smallDistNerf * result, 2.0);
+            // Nerf patterns with previous objects close to the current object
+            double distanceNerf = 0.0;
+
+            if (cumulativeLazyJumpDistance > 0)
+                distanceNerf = Math.Clamp(0.36 * cumulativeDistance * scalingFactor / cumulativeLazyJumpDistance, 0.4, 1.0);
+
+            result = Math.Pow(smallDistNerf * distanceNerf * result, 2.0);
 
             // Additional bonus for Hidden due to there being no approach circles.
             if (mods.OfType<OsuModHidden>().Any())
